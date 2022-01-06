@@ -89,33 +89,35 @@ const getAllProperties = function(options, limit = 10) {
 
   if (options.city) {
     queryParams.push(`%${options.city}%`);
-    queryString += `${currentVerb} city LIKE $${queryParams.length} `;
+    queryString += `
+    ${currentVerb} city LIKE $${queryParams.length} `;
     currentVerb = andVerb;
   }
   if (options.minimum_price_per_night) {
     queryParams.push(`${options.minimum_price_per_night * 100}`);
-    queryString += `${currentVerb} cost_per_night >= $${queryParams.length} `;
+    queryString += `
+    ${currentVerb} cost_per_night >= $${queryParams.length} `;
     currentVerb = andVerb;
   }
   if (options.maximum_price_per_night) {
     queryParams.push(`${options.maximum_price_per_night * 100}`);
-    queryString += `${currentVerb} cost_per_night <= $${queryParams.length} `;
-    currentVerb = andVerb;
-  }
-  if (options.minimum_rating) {
-    queryParams.push(`${options.minimum_rating}`);
-    queryString += `${currentVerb} rating >= $${queryParams.length} `;
+    queryString += `
+    ${currentVerb} cost_per_night <= $${queryParams.length} `;
     currentVerb = andVerb;
   }
 
-  queryParams.push(limit);
   queryString += `
   GROUP BY properties.id
-  ORDER BY cost_per_night
-  LIMIT $${queryParams.length};
   `;
 
-  console.log(queryString, queryParams);
+  if (options.minimum_rating) {
+    queryParams.push(`${options.minimum_rating}`);
+    queryString += `
+    HAVING avg(property_reviews.rating) >= $${queryParams.length} `;
+  }
+  queryParams.push(limit);
+  queryString += `
+  ORDER BY cost_per_night LIMIT $${queryParams.length};`;
 
   return pool
     .query(queryString, queryParams)
@@ -124,16 +126,22 @@ const getAllProperties = function(options, limit = 10) {
 };
 exports.getAllProperties = getAllProperties;
 
-
 /**
  * Add a property to the database
  * @param {{}} property An object containing all of the property details.
  * @return {Promise<{}>} A promise to the property.
  */
+
 const addProperty = function(property) {
-  const propertyId = Object.keys(properties).length + 1;
-  property.id = propertyId;
-  properties[propertyId] = property;
-  return Promise.resolve(property);
+  //  Honestly, dunno if this is a great idea to write it like this but I wanted to see if I could, and it worked.
+  const propKeys = Object.keys(property);
+  const queryParams = Object.values(property);
+  const tokenList = queryParams.map((x,i) => '$' + ++i).toString();
+  const queryString = `
+  INSERT INTO properties (${propKeys.toString()}) VALUES (${tokenList}) RETURNING *`;
+  return pool
+    .query(queryString, queryParams)
+    .then(res => res.rows[0])
+    .catch(err => err);
 };
 exports.addProperty = addProperty;
